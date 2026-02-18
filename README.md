@@ -33,6 +33,7 @@ cp .env.example .env
 4. Edite o arquivo `.env` e adicione:
    - Sua chave da API do Gemini em `GEMINI_API_KEY`
    - A URL do vídeo do YouTube em `YOUTUBE_URL`
+   - (Opcional) O modelo do Gemini em `GEMINI_MODEL` (padrão: gemini-1.5-pro-latest)
 
 ## Uso
 

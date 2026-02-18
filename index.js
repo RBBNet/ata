@@ -8,6 +8,7 @@ dotenv.config();
 // Configuração
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const YOUTUBE_URL = process.env.YOUTUBE_URL;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-pro-latest';
 
 if (!GEMINI_API_KEY) {
   console.error('Erro: GEMINI_API_KEY não está configurada no arquivo .env');
@@ -36,7 +37,8 @@ const rl = readline.createInterface({
 async function askAboutVideo(question) {
   try {
     // Usa o modelo Gemini 1.5 Pro que suporta vídeos do YouTube
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro-latest' });
+    // Por padrão usa 'latest' para obter recursos mais recentes (configurável via GEMINI_MODEL)
+    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
 
     // Cria o prompt com o vídeo do YouTube e a pergunta
     const prompt = `Analise este vídeo do YouTube: ${YOUTUBE_URL}\n\nPergunta: ${question}`;
