@@ -1,0 +1,5 @@
+{
+  "geminiApiKey": "SUA_CHAVE_API_AQUI",
+  "videoUrl": "https://www.youtube.com/watch?v=SEU_VIDEO_AQUI",
+  "model": "gemini-2.5-pro-preview-03-25"
+}

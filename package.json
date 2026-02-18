@@ -1,0 +1,13 @@
+{
+  "name": "video-qa",
+  "version": "1.0.0",
+  "description": "Perguntas sobre vídeo via Gemini API",
+  "main": "video-qa.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node video-qa.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0"
+  }
+}
