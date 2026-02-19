@@ -5,9 +5,11 @@
   "main": "video-qa.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node video-qa.js"
+    "start": "node video-qa.js",
+    "start:web": "node web/server.js"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0"
+    "@google/generative-ai": "^0.21.0",
+    "express": "^4.21.2"
   }
 }

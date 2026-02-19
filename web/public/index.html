@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gerador de Ata</title>
+    <link rel="stylesheet" href="/styles.css" />
+</head>
+
+<body>
+    <main class="layout">
+        <section class="panel chat-panel">
+            <h1>Assistente da Ata</h1>
+
+            <label class="label" for="videoUrl">URL do vídeo</label>
+            <div class="row">
+                <input id="videoUrl" type="text" placeholder="https://youtu.be/..." />
+                <button id="btnStart">Gerar seções</button>
+            </div>
+
+            <div class="action-box">
+                <div class="action-row">
+                    <div class="action-select-wrap">
+                        <label class="label" for="actionType">Ação</label>
+                        <select id="actionType">
+                            <option value="ask">Perguntar</option>
+                            <option value="adjust">Ajustar</option>
+                            <option value="accept">Aceitar (gerar .md)</option>
+                        </select>
+                    </div>
+
+                    <label id="includeVideoWrap" class="checkbox-row inline">
+                        <input id="includeVideo" type="checkbox" />
+                        Incluir vídeo no contexto
+                    </label>
+                </div>
+
+                <label class="label" for="message">Mensagem</label>
+                <textarea id="message" rows="5" placeholder="Digite sua pergunta ou ajuste..."></textarea>
+
+                <div class="send-row">
+                    <button id="btnSend">Enviar</button>
+                    <div id="loadingIndicator" class="loading-indicator" aria-live="polite">
+                        <span class="spinner" aria-hidden="true"></span>
+                        Aguarde...
+                    </div>
+                </div>
+            </div>
+
+            <label class="label" for="chatLog">Histórico</label>
+            <div id="chatLog" class="chat-log"></div>
+        </section>
+
+        <section class="panel sections-panel">
+            <h2>Seções da ata (estado atual)</h2>
+            <div id="sectionsContainer" class="sections"></div>
+        </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
+    <script src="/app.js"></script>
+</body>
+
+</html>
