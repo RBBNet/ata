@@ -2,6 +2,8 @@
 
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
+const { execFile } = require("child_process");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const SEP_ITEM = "<<<ITEM>>>";
@@ -366,6 +368,36 @@ function createAtaService(baseDir) {
 
         aceitar(parsed) {
             return salvarArquivos(baseDir, parsed);
+        },
+
+        async gerarDocx(parsed) {
+            const resultDir = path.join(baseDir, "result");
+            if (!fs.existsSync(resultDir)) {
+                fs.mkdirSync(resultDir, { recursive: true });
+            }
+
+            const partes = [...parsed.itens];
+            if (parsed.extra) partes.push(parsed.extra);
+            const combinado = partes.join("\n\n");
+
+            const tmpInput = path.join(os.tmpdir(), `ata_${Date.now()}.md`);
+            const docxPath = path.join(resultDir, "ata.docx");
+
+            fs.writeFileSync(tmpInput, combinado, "utf8");
+
+            await new Promise((resolve, reject) => {
+                execFile(
+                    "pandoc",
+                    [tmpInput, "-o", docxPath, "--from=markdown", "--to=docx"],
+                    (err, _stdout, stderr) => {
+                        fs.rmSync(tmpInput, { force: true });
+                        if (err) reject(new Error(stderr || err.message));
+                        else resolve();
+                    }
+                );
+            });
+
+            return docxPath;
         },
     };
 }

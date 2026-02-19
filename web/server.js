@@ -153,6 +153,28 @@ app.post("/api/action", async (req, res) => {
     }
 });
 
+app.get("/api/download-docx", async (req, res) => {
+    const { sessionId } = req.query;
+    const session = obterSessao(sessionId);
+
+    if (!session) {
+        res.status(400).json({ error: "Sessão inválida." });
+        return;
+    }
+
+    if (!session.parsed) {
+        res.status(400).json({ error: "Gere as seções iniciais antes de continuar." });
+        return;
+    }
+
+    try {
+        const docxPath = await service.gerarDocx(session.parsed);
+        res.download(docxPath, "ata.docx");
+    } catch (err) {
+        res.status(500).json({ error: err.message || String(err) });
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`Interface web disponível em http://localhost:${PORT}`);
 });
