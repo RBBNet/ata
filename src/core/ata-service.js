@@ -122,6 +122,18 @@ const INSTRUCOES_FORMATO = `
     mes_reuniao_por_extenso: valor ou <mês_reunião_por_extenso>
     ano_reuniao: valor ou <ano_reunião>
 - Cada item da pauta deve começar exatamente com a linha: <<<ITEM>>>
+- Cada item deve ter este formato interno:
+    1) primeira linha em negrito com número e nome da seção: **<número>. <nome da seção>**
+        2) na linha seguinte, obrigatoriamente, começar o conteúdo da seção
+        3) inserir uma linha em branco entre o título e o primeiro parágrafo
+- Título e conteúdo NUNCA podem ficar na mesma linha.
+- Formato inválido (NÃO usar): **2. Aplicações do Plexos** Camila apresentou...
+- Formato válido (usar):
+    **2. Aplicações do Plexos**
+
+    Camila apresentou...
+- NÃO use os rótulos "Nome:", "Status:", "Resumo:" ou "Justificativa:".
+- NÃO inclua status em nenhuma seção.
 - Se houver discussões genuinamente extra-pauta, inclua-as em uma única seção final iniciada exatamente com a linha: <<<EXTRA_PAUTA>>>
 - A seção <<<EXTRA_PAUTA>>> é opcional: omita-a se não houver discussões completamente fora da pauta.
 
@@ -134,18 +146,16 @@ mes_reuniao_por_extenso: fevereiro
 ano_reuniao: 2026
 
 <<<ITEM>>>
-**Nome:** Aprovação da ata anterior
-**Status:** abordado
-**Resumo:** A ata foi aprovada por unanimidade. <Pessoa 1> sugeriu uma correção no item 3, que foi aceita.
+**1. Aprovação da ata anterior**
+A ata foi aprovada por unanimidade. <Pessoa 1> sugeriu uma correção no item 3, que foi aceita.
 
 <<<ITEM>>>
-**Nome:** Planejamento do próximo trimestre
-**Status:** retirado da pauta
-**Justificativa:** O responsável não estava presente. O item será retomado na próxima reunião.
+**2. Planejamento do próximo trimestre**
+O item foi retirado da pauta porque o responsável não estava presente. Será retomado na próxima reunião.
 
 <<<EXTRA_PAUTA>>>
-**Assunto:** Confraternização de fim de ano
-**Resumo:** <Pessoa 2> trouxe a ideia de organizar um evento. Ficou de enviar uma proposta por e-mail.
+**Extra-pauta: Confraternização de fim de ano**
+<Pessoa 2> trouxe a ideia de organizar um evento. Ficou de enviar uma proposta por e-mail.
 \`\`\`
 `;
 
@@ -166,17 +176,20 @@ Antes de classificar qualquer discussão, siga este raciocínio em ordem:
 
 ## Conteúdo de cada item da pauta
 
-Para cada item previsto na pauta, use exatamente os campos abaixo:
-- **Nome:** nome do item
-- **Status:** abordado | retirado da pauta | não abordado
-- **Justificativa:** (somente se retirado da pauta) motivo, ou "não informado" se não houve justificativa
-- **Resumo:** o que foi discutido e decidido, incluindo discussões relacionadas que ocorreram no contexto desse item. Cite brevemente quem falou o quê quando relevante.
+Para cada item previsto na pauta:
+- A primeira linha da seção deve ser: **<número>. <nome da seção>**
+- O conteúdo deve começar obrigatoriamente em nova linha, com uma linha em branco após o título.
+- Nunca coloque título e conteúdo na mesma linha.
+- Abaixo, escreva o conteúdo da seção (o que foi discutido e decidido), incluindo discussões relacionadas que ocorreram no contexto desse item.
+- Se o item tiver sido retirado da pauta ou não abordado, explique isso no próprio conteúdo da seção e informe justificativa quando houver.
 - Quando não for possível identificar o nome do participante, use placeholders consistentes ao longo de todo o documento (ex: <Pessoa 1>, <Pessoa 2> — sempre o mesmo identificador para a mesma pessoa).
+
+NÃO inclua linha de status nem os rótulos "Nome:", "Status:", "Resumo:" ou "Justificativa:".
 
 ## Conteúdo da seção extra-pauta (somente se existir)
 
-- **Assunto:** descrição do tema
-- **Resumo:** o que foi discutido, com atribuição de falas relevantes (usando os mesmos placeholders)
+- Primeira linha em negrito no formato: **Extra-pauta: <tema>**
+- Abaixo, conteúdo do que foi discutido, com atribuição de falas relevantes (usando os mesmos placeholders)
 
 ${INSTRUCOES_FORMATO}`;
 }

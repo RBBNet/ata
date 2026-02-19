@@ -47,6 +47,15 @@ function renderMarkdown(markdownText) {
     return `<pre>${escapeHtml(safeText)}</pre>`;
 }
 
+function normalizeSectionMarkdown(markdownText) {
+    const safeText = typeof markdownText === "string" ? markdownText : "";
+
+    return safeText.replace(
+        /^(\s*\*\*[^*\n]+\*\*)([ \t]+)(\S)/,
+        "$1\n\n$3"
+    );
+}
+
 function renderSections(parsed) {
     sectionsContainer.innerHTML = "";
 
@@ -67,7 +76,7 @@ function renderSections(parsed) {
 
         const markdown = document.createElement("div");
         markdown.className = "section-markdown";
-        markdown.innerHTML = renderMarkdown(item);
+        markdown.innerHTML = renderMarkdown(normalizeSectionMarkdown(item));
 
         card.appendChild(title);
         card.appendChild(markdown);
@@ -83,7 +92,7 @@ function renderSections(parsed) {
 
         const markdown = document.createElement("div");
         markdown.className = "section-markdown";
-        markdown.innerHTML = renderMarkdown(parsed.extra);
+        markdown.innerHTML = renderMarkdown(normalizeSectionMarkdown(parsed.extra));
 
         card.appendChild(title);
         card.appendChild(markdown);
