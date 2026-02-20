@@ -6,6 +6,13 @@ const os = require("os");
 const { execFile } = require("child_process");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
+let pandocPath = "pandoc";
+try {
+    pandocPath = require("pandoc-bin");
+} catch (err) {
+    // mantém fallback para pandoc no PATH
+}
+
 const SEP_ITEM = "<<<ITEM>>>";
 const SEP_EXTRA = "<<<EXTRA_PAUTA>>>";
 const SEP_CABECALHO = "<<<CABECALHO>>>";
@@ -387,7 +394,7 @@ function createAtaService(baseDir) {
 
             await new Promise((resolve, reject) => {
                 execFile(
-                    "pandoc",
+                    pandocPath,
                     [tmpInput, "-o", docxPath, "--from=markdown", "--to=docx"],
                     (err, _stdout, stderr) => {
                         fs.rmSync(tmpInput, { force: true });
