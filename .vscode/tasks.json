@@ -38,6 +38,16 @@
 			"type": "shell",
 			"command": "$proc = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess; if ($proc) { Stop-Process -Id $proc -Force; Write-Output \"Stopped process $proc\" } else { Write-Output \"No listener on port 3000\" }",
 			"isBackground": false
+		},
+		{
+			"label": "test-docx-generation",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				"-e",
+				"const path=require('path'); const {createAtaService}=require('./src/core/ata-service'); (async()=>{ const svc=createAtaService(path.resolve('.')); const out=await svc.gerarDocx({itens:['**1. Teste**\\n\\nConteudo de teste.'],extra:null}); console.log(out); })().catch(e=>{ console.error(e.message); process.exit(1); });"
+			],
+			"isBackground": false
 		}
 	]
 }

@@ -8,8 +8,31 @@ const { setGlobalDispatcher, EnvHttpProxyAgent, Agent } = require("undici");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 let pandocPath = "pandoc";
+
+function resolverPandocPath(pandocBinExport) {
+    if (typeof pandocBinExport === "string") return pandocBinExport;
+
+    if (pandocBinExport && typeof pandocBinExport.path === "string") {
+        return pandocBinExport.path;
+    }
+
+    if (pandocBinExport && typeof pandocBinExport.default === "string") {
+        return pandocBinExport.default;
+    }
+
+    if (
+        pandocBinExport &&
+        pandocBinExport.default &&
+        typeof pandocBinExport.default.path === "string"
+    ) {
+        return pandocBinExport.default.path;
+    }
+
+    return "pandoc";
+}
+
 try {
-    pandocPath = require("pandoc-bin");
+    pandocPath = resolverPandocPath(require("pandoc-bin"));
 } catch (err) {
     // mantém fallback para pandoc no PATH
 }
