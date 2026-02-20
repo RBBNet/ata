@@ -1,0 +1,43 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "kill-port-3000",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"$pid = (Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess); if ($pid) { Stop-Process -Id $pid -Force; Write-Output \"Stopped PID $pid on port 3000\" } else { Write-Output \"No listener on port 3000\" }"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "kill-port-3000",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"$procId = (Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess); if ($procId) { Stop-Process -Id $procId -Force; Write-Output \"Stopped PID $procId on port 3000\" } else { Write-Output \"No listener on port 3000\" }"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "kill-port-3000-v2",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"for /f \"tokens=5\" %a in ('netstat -aon ^| findstr :3000 ^| findstr LISTENING') do taskkill /PID %a /F"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "kill-port-3000-v3",
+			"type": "shell",
+			"command": "$proc = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess; if ($proc) { Stop-Process -Id $proc -Force; Write-Output \"Stopped process $proc\" } else { Write-Output \"No listener on port 3000\" }",
+			"isBackground": false
+		}
+	]
+}

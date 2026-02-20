@@ -11,6 +11,7 @@ const messageInput = document.getElementById("message");
 const includeVideoInput = document.getElementById("includeVideo");
 const includeVideoWrap = document.getElementById("includeVideoWrap");
 const btnSend = document.getElementById("btnSend");
+const btnDownloadDocx = document.getElementById("btnDownloadDocx");
 const loadingIndicator = document.getElementById("loadingIndicator");
 const sectionsContainer = document.getElementById("sectionsContainer");
 
@@ -126,6 +127,11 @@ function setLoading(isLoading) {
     loadingIndicator.classList.toggle("active", isLoading);
     btnStart.disabled = isLoading;
     btnSend.disabled = isLoading;
+    btnDownloadDocx.disabled = isLoading || !state.parsed;
+}
+
+function updateDownloadBtn() {
+    btnDownloadDocx.disabled = !state.parsed;
 }
 
 async function postJson(url, body) {
@@ -162,6 +168,7 @@ btnStart.addEventListener("click", async () => {
 
         state.parsed = payload.parsed;
         renderSections(state.parsed);
+        updateDownloadBtn();
         logMessage("system", payload.message || "Seções geradas.");
     } catch (err) {
         logMessage("error", err.message || String(err));
@@ -193,6 +200,7 @@ btnSend.addEventListener("click", async () => {
         if (payload.parsed) {
             state.parsed = payload.parsed;
             renderSections(state.parsed);
+            updateDownloadBtn();
         }
 
         if (payload.answer) {
@@ -213,6 +221,10 @@ btnSend.addEventListener("click", async () => {
     } finally {
         setLoading(false);
     }
+});
+
+btnDownloadDocx.addEventListener("click", () => {
+    window.location.href = `/api/download-docx?sessionId=${state.sessionId}`;
 });
 
 actionType.addEventListener("change", updateActionUi);

@@ -16,3 +16,4 @@ Gera atas do Comitê Executivo
 ## Saída em arquivos
 
 - Ao aceitar, o sistema gera `secao00.md`, `secao01.md`, etc. em `result/`
+- Para gerar `ata.docx`, o `pandoc` é baixado automaticamente via dependência npm (`pandoc-bin`). Se preferir, também funciona com `pandoc` instalado no PATH.
