@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { execFile } = require("child_process");
+const { setGlobalDispatcher, EnvHttpProxyAgent, Agent } = require("undici");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 let pandocPath = "pandoc";
@@ -39,6 +40,106 @@ function carregarEnv(baseDir) {
             process.env[chave] = valor;
         }
     }
+}
+
+function normalizarListaNoProxy(valor) {
+    if (!valor) return [];
+
+    if (Array.isArray(valor)) {
+        return valor
+            .map((item) => String(item || "").trim())
+            .filter(Boolean);
+    }
+
+    if (typeof valor === "string") {
+        return valor
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean);
+    }
+
+    return [];
+}
+
+function parseProxyConfig(config) {
+    const proxyConfig = config?.proxy;
+    if (!proxyConfig) return null;
+
+    if (typeof proxyConfig === "string") {
+        const url = proxyConfig.trim();
+        return url ? { url, noProxy: [] } : null;
+    }
+
+    if (typeof proxyConfig !== "object") return null;
+
+    if (proxyConfig.enabled === false) {
+        return { disabled: true };
+    }
+
+    const url = String(proxyConfig.url || "").trim();
+    const noProxy = normalizarListaNoProxy(proxyConfig.noProxy);
+
+    if (!url) return null;
+    return { url, noProxy };
+}
+
+function validarProxySemAutenticacao(proxyUrl, origem) {
+    let parsed;
+    try {
+        parsed = new URL(proxyUrl);
+    } catch (_err) {
+        throw new Error(`URL de proxy inválida em ${origem}: ${proxyUrl}`);
+    }
+
+    if (parsed.username || parsed.password) {
+        throw new Error(
+            `Proxy com autenticação ainda não é suportado (${origem}). Remova usuário/senha da URL.`
+        );
+    }
+}
+
+function configurarProxy(config) {
+    const proxyFromConfig = parseProxyConfig(config);
+
+    if (proxyFromConfig?.disabled) {
+        setGlobalDispatcher(new Agent());
+        return { enabled: false, source: "config" };
+    }
+
+    if (proxyFromConfig?.url) {
+        validarProxySemAutenticacao(proxyFromConfig.url, "config.json");
+
+        process.env.HTTP_PROXY = proxyFromConfig.url;
+        process.env.HTTPS_PROXY = proxyFromConfig.url;
+        process.env.http_proxy = proxyFromConfig.url;
+        process.env.https_proxy = proxyFromConfig.url;
+
+        if (proxyFromConfig.noProxy.length) {
+            const joinedNoProxy = proxyFromConfig.noProxy.join(",");
+            process.env.NO_PROXY = joinedNoProxy;
+            process.env.no_proxy = joinedNoProxy;
+        } else {
+            delete process.env.NO_PROXY;
+            delete process.env.no_proxy;
+        }
+
+        setGlobalDispatcher(new EnvHttpProxyAgent());
+        return { enabled: true, source: "config" };
+    }
+
+    const envProxy =
+        process.env.HTTPS_PROXY ||
+        process.env.HTTP_PROXY ||
+        process.env.https_proxy ||
+        process.env.http_proxy;
+
+    if (envProxy) {
+        validarProxySemAutenticacao(envProxy, "variável de ambiente");
+        setGlobalDispatcher(new EnvHttpProxyAgent());
+        return { enabled: true, source: "env" };
+    }
+
+    return { enabled: false, source: "none" };
 }
 
 function parseCabecalhoMeta(resposta) {
@@ -306,6 +407,8 @@ function createAtaService(baseDir) {
     }
 
     const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    configurarProxy(config);
+
     const headerTemplate =
         config.headerTemplate ||
         "# ATA <num_ata> DE REUNIÃO DO COMITÊ EXECUTIVO\n\nÀs 10:30h do dia <dia_reunião> de <mês_reunião_por_extenso> de <ano_reunião> reuniram-se remotamente os representantes dos Partícipes da Rede Blockchain Brasil – RBB, conforme lista de presença ao final, para tratar dos assuntos constantes da Ordem do Dia abaixo, com apresentação de apoio para a reunião contida no Anexo 1.\n\n## Ordem do Dia\nObservadas as cláusulas do Acordo de Cooperação n° D-121.2.0014.22, celebrado entre os Partícipes para a criação e manutenção da RBB, e sem prejuízo do que vier a dispor o Regulamento da RBB:";

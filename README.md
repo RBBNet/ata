@@ -7,6 +7,41 @@ Gera atas do Comitê Executivo
 - Mantenha `config.json` com `videoUrl`, `model`, `fastModel` e `headerTemplate`
 - O `headerTemplate` define o conteúdo da Seção 00 (cabeçalho da ata)
 
+### Proxy (opcional)
+
+Ordem de precedência:
+
+1. Se existir `proxy` no `config.json`, ele é usado
+2. Se não existir no `config.json`, o sistema tenta `HTTPS_PROXY`/`HTTP_PROXY` (e `NO_PROXY`) do ambiente
+3. Se não houver em nenhum dos dois, roda sem proxy
+
+Exemplo de `config.json` com proxy (sem autenticação):
+
+```json
+{
+	"videoUrl": "https://...",
+	"model": "gemini-3-pro-preview",
+	"fastModel": "gemini-3-flash-preview",
+	"headerTemplate": "...",
+	"proxy": {
+		"url": "http://proxy.empresa.local:8080",
+		"noProxy": ["localhost", "127.0.0.1", ".interna.local"]
+	}
+}
+```
+
+Para desabilitar explicitamente o uso de proxy no `config.json`:
+
+```json
+{
+	"proxy": {
+		"enabled": false
+	}
+}
+```
+
+> Dica: se seu sistema já tiver `HTTP_PROXY`/`HTTPS_PROXY` definidos e você quiser ignorá-los neste projeto, use `"proxy": { "enabled": false }`.
+
 ## Interface Web
 
 - Instale dependências: `npm install`

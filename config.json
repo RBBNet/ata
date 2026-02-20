@@ -2,5 +2,12 @@
   "videoUrl": "https://youtu.be/iOg2EgcicH8?si=usMNA7Ea1clO6-M0",
   "model": "gemini-3-pro-preview",
   "fastModel": "gemini-3-flash-preview",
+  "proxy": {
+    "url": "http://127.0.0.1:3128",
+    "noProxy": [
+      "localhost",
+      "127.0.0.1"
+    ]
+  },
   "headerTemplate": "# ATA <num_ata> DE REUNIÃO DO COMITÊ EXECUTIVO\n\nÀs 10:30h do dia <dia_reunião> de <mês_reunião_por_extenso> de <ano_reunião> reuniram-se remotamente os representantes dos Partícipes da Rede Blockchain Brasil – RBB, conforme lista de presença ao final, para tratar dos assuntos constantes da Ordem do Dia abaixo, com apresentação de apoio para a reunião contida no Anexo 1.\n\n## Ordem do Dia\nObservadas as cláusulas do Acordo de Cooperação n° D-121.2.0014.22, celebrado entre os Partícipes para a criação e manutenção da RBB, e sem prejuízo do que vier a dispor o Regulamento da RBB:"
 }
