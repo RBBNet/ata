@@ -70,6 +70,7 @@ app.post("/api/start", async (req, res) => {
         res.json({
             parsed: session.parsed,
             videoUrl: session.videoUrl,
+            warnings: session.parsed.contextoAvisos || [],
             message: "Seções iniciais geradas com sucesso.",
         });
     } catch (err) {
@@ -132,6 +133,7 @@ app.post("/api/action", async (req, res) => {
 
             res.json({
                 parsed: session.parsed,
+                warnings: session.parsed.contextoAvisos || [],
                 message: "Seções atualizadas com sucesso.",
             });
             return;

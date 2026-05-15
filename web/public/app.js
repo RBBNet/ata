@@ -84,6 +84,24 @@ function renderSections(parsed) {
         sectionsContainer.appendChild(card);
     });
 
+    if (parsed.membrosPresentes) {
+        const card = document.createElement("article");
+        card.className = "section-card";
+
+        const title = document.createElement("h3");
+        title.textContent = "Membros Presentes";
+
+        const markdown = document.createElement("div");
+        markdown.className = "section-markdown";
+        markdown.innerHTML = renderMarkdown(
+            normalizeSectionMarkdown(parsed.membrosPresentes)
+        );
+
+        card.appendChild(title);
+        card.appendChild(markdown);
+        sectionsContainer.appendChild(card);
+    }
+
     if (parsed.extra) {
         const card = document.createElement("article");
         card.className = "section-card extra";
@@ -169,6 +187,11 @@ btnStart.addEventListener("click", async () => {
         state.parsed = payload.parsed;
         renderSections(state.parsed);
         updateDownloadBtn();
+
+        if (Array.isArray(payload.warnings) && payload.warnings.length) {
+            logMessage("system", `Avisos:\n- ${payload.warnings.join("\n- ")}`);
+        }
+
         logMessage("system", payload.message || "Seções geradas.");
     } catch (err) {
         logMessage("error", err.message || String(err));
@@ -201,6 +224,10 @@ btnSend.addEventListener("click", async () => {
             state.parsed = payload.parsed;
             renderSections(state.parsed);
             updateDownloadBtn();
+        }
+
+        if (Array.isArray(payload.warnings) && payload.warnings.length) {
+            logMessage("system", `Avisos:\n- ${payload.warnings.join("\n- ")}`);
         }
 
         if (payload.answer) {

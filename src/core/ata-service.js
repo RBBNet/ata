@@ -6,6 +6,7 @@ const os = require("os");
 const { execFile } = require("child_process");
 const { setGlobalDispatcher, EnvHttpProxyAgent, Agent } = require("undici");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { carregarContextoGovernanca } = require("./governanca-context");
 
 let pandocPath = "pandoc";
 
@@ -40,6 +41,283 @@ try {
 const SEP_ITEM = "<<<ITEM>>>";
 const SEP_EXTRA = "<<<EXTRA_PAUTA>>>";
 const SEP_CABECALHO = "<<<CABECALHO>>>";
+const SEP_MEMBROS = "<<<MEMBROS_PRESENTES>>>";
+
+const SUBTITULO_MEMBROS = {
+    com: "**Com direito a voto**",
+    sem: "**Sem direito a voto**",
+    convidados: "**Convidados**",
+};
+
+function normalizarChave(texto) {
+    return String(texto || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+}
+
+function limparNomePessoa(texto) {
+    return String(texto || "")
+        .replace(/\s*\([^)]*\)\s*/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function mapearSubtituloMembros(linha) {
+    const chave = normalizarChave(linha.replace(/\*/g, ""));
+    if (chave.includes("com direito a voto")) return "com";
+    if (chave.includes("sem direito a voto")) return "sem";
+    if (chave.includes("convidados")) return "convidados";
+    return null;
+}
+
+function criarEstruturaMembrosVazia() {
+    return {
+        titulo: "**Membros Presentes**",
+        categorias: {
+            com: [],
+            sem: [],
+            convidados: [],
+        },
+    };
+}
+
+function obterOuCriarOrganizacao(lista, nomeOrg) {
+    const nome = String(nomeOrg || "").trim();
+    const chave = normalizarChave(nome);
+    if (!nome || !chave) return null;
+
+    let registro = lista.find((item) => item.chave === chave);
+    if (!registro) {
+        registro = { nome, chave, pessoas: [] };
+        lista.push(registro);
+    }
+    return registro;
+}
+
+function parseSecaoMembrosPresentes(texto) {
+    const estrutura = criarEstruturaMembrosVazia();
+    const linhas = String(texto || "").split(/\r?\n/);
+
+    let categoriaAtual = null;
+    let orgAtual = null;
+
+    for (const linhaBruta of linhas) {
+        const linha = linhaBruta.trim();
+        if (!linha) continue;
+
+        const chaveLinha = normalizarChave(linha);
+        if (chaveLinha.includes("membros presentes") && linha.startsWith("**")) {
+            estrutura.titulo = linha;
+            continue;
+        }
+
+        const categoria = mapearSubtituloMembros(linha);
+        if (categoria) {
+            categoriaAtual = categoria;
+            orgAtual = null;
+            continue;
+        }
+
+        if (!categoriaAtual) continue;
+
+        if (/^[-*]\s+/.test(linha)) {
+            if (!orgAtual) continue;
+            const nomePessoa = limparNomePessoa(linha.replace(/^[-*]\s+/, ""));
+            if (!nomePessoa || nomePessoa.toLowerCase() === "nenhum registrado.") continue;
+            orgAtual.pessoas.push(nomePessoa);
+            continue;
+        }
+
+        if (linha.toLowerCase() === "nenhum registrado.") continue;
+
+        const partesInline = linha
+            .split(" - ")
+            .map((parte) => limparNomePessoa(parte))
+            .filter(Boolean);
+
+        if (partesInline.length > 1) {
+            orgAtual = obterOuCriarOrganizacao(
+                estrutura.categorias[categoriaAtual],
+                partesInline[0]
+            );
+
+            if (orgAtual) {
+                partesInline.slice(1).forEach((nome) => {
+                    if (nome.toLowerCase() !== "nenhum registrado.") {
+                        orgAtual.pessoas.push(nome);
+                    }
+                });
+            }
+            continue;
+        }
+
+        orgAtual = obterOuCriarOrganizacao(estrutura.categorias[categoriaAtual], linha);
+    }
+
+    return estrutura;
+}
+
+function extrairNomesDesconsiderados(itens) {
+    const texto = (itens || []).join("\n\n");
+    const nomes = new Set();
+
+    const regexes = [
+        /(?:não registrar presença|desconsiderar presença|não considerar como presente)\s+(?:do|da|de)?\s*(?:sr\.?|sra\.?)?\s*([A-ZÁÀÂÃÉÈÊÍÌÎÓÒÔÕÚÙÛÇ][\p{L}\s'.-]{2,80})/giu,
+        /(?:sr\.?|sra\.?)?\s*([A-ZÁÀÂÃÉÈÊÍÌÎÓÒÔÕÚÙÛÇ][\p{L}\s'.-]{2,80})[^.\n]{0,120}não\s+(?:era para|deve|deveria)\s+registrar\s+presença/giu,
+        /(?:sr\.?|sra\.?)?\s*([A-ZÁÀÂÃÉÈÊÍÌÎÓÒÔÕÚÙÛÇ][\p{L}\s'.-]{2,80})[^.\n]{0,120}(?:entrou[^.\n]{0,80}saiu[^.\n]{0,80}não\s+poderia\s+participar|não\s+participou)/giu,
+    ];
+
+    for (const regex of regexes) {
+        for (const match of texto.matchAll(regex)) {
+            const nome = limparNomePessoa(match[1] || "").replace(/\s{2,}/g, " ").trim();
+            const chave = normalizarChave(nome);
+            if (chave) nomes.add(chave);
+        }
+    }
+
+    return nomes;
+}
+
+function serializarSecaoMembros(estrutura, numeroSecao) {
+    const linhas = [`**${numeroSecao}. Membros Presentes**`, ""];
+
+    const ordemCategorias = ["com", "sem", "convidados"];
+    ordemCategorias.forEach((categoria, idxCategoria) => {
+        linhas.push(SUBTITULO_MEMBROS[categoria]);
+        linhas.push("");
+
+        const organizacoes = (estrutura.categorias[categoria] || []).filter(
+            (org) => org && org.nome && Array.isArray(org.pessoas) && org.pessoas.length > 0
+        );
+
+        if (!organizacoes.length) {
+            linhas.push("Nenhum registrado.");
+        } else {
+            organizacoes.forEach((org, idxOrg) => {
+                linhas.push(org.nome);
+                org.pessoas.forEach((pessoa) => linhas.push(`- ${pessoa}`));
+                if (idxOrg < organizacoes.length - 1) linhas.push("");
+            });
+        }
+
+        if (idxCategoria < ordemCategorias.length - 1) {
+            linhas.push("");
+        }
+    });
+
+    return linhas.join("\n");
+}
+
+function aplicarRegrasMembrosPresentes(textoSecao, numeroSecao, dadosGovernanca, itens) {
+    const estrutura = parseSecaoMembrosPresentes(textoSecao);
+    const desconsiderados = extrairNomesDesconsiderados(itens);
+
+    Object.values(estrutura.categorias).forEach((lista) => {
+        lista.forEach((org) => {
+            const unicos = [];
+            const vistos = new Set();
+            org.pessoas.forEach((nome) => {
+                const chave = normalizarChave(nome);
+                if (!chave || desconsiderados.has(chave) || vistos.has(chave)) return;
+                vistos.add(chave);
+                unicos.push(nome);
+            });
+            org.pessoas = unicos;
+        });
+    });
+
+    const representantes = dadosGovernanca?.representantes || {};
+    const semDireito = estrutura.categorias.sem || [];
+    const convidados = estrutura.categorias.convidados || [];
+
+    semDireito.forEach((org) => {
+        const registro = representantes[org.chave];
+        const repsOficiais = registro?.pessoas || null;
+        if (!repsOficiais) return;
+
+        const mantidos = [];
+        const moverConvidados = [];
+
+        org.pessoas.forEach((nome) => {
+            const nomeKey = normalizarChave(nome);
+            if (repsOficiais[nomeKey]) {
+                mantidos.push(nome);
+            } else {
+                moverConvidados.push(nome);
+            }
+        });
+
+        org.pessoas = mantidos;
+
+        if (moverConvidados.length) {
+            const destino = obterOuCriarOrganizacao(convidados, org.nome);
+            if (destino) {
+                destino.pessoas.push(...moverConvidados);
+            }
+        }
+    });
+
+    const nomesComOuSem = new Set();
+    [estrutura.categorias.com, estrutura.categorias.sem].forEach((lista) => {
+        (lista || []).forEach((org) => {
+            org.pessoas.forEach((nome) => nomesComOuSem.add(normalizarChave(nome)));
+        });
+    });
+
+    (estrutura.categorias.convidados || []).forEach((org) => {
+        const unicos = [];
+        const vistos = new Set();
+        org.pessoas.forEach((nome) => {
+            const chave = normalizarChave(nome);
+            if (!chave || nomesComOuSem.has(chave) || vistos.has(chave)) return;
+            vistos.add(chave);
+            unicos.push(nome);
+        });
+        org.pessoas = unicos;
+    });
+
+    return serializarSecaoMembros(estrutura, numeroSecao);
+}
+
+function criarTemplateMembrosPresentes(numeroSecao) {
+    return serializarSecaoMembros(
+        {
+            categorias: {
+                com: [
+                    { nome: "Partícipe 1", chave: normalizarChave("Partícipe 1"), pessoas: ["Representante 1"] },
+                ],
+                sem: [
+                    { nome: "Partícipe 2", chave: normalizarChave("Partícipe 2"), pessoas: ["Representante 2"] },
+                ],
+                convidados: [
+                    {
+                        nome: "Organização não partícipe 1",
+                        chave: normalizarChave("Organização não partícipe 1"),
+                        pessoas: ["Convidado 1"],
+                    },
+                ],
+            },
+        },
+        numeroSecao
+    );
+}
+
+function garantirSecaoMembrosPresentes(parsed, dadosGovernanca) {
+    const proximoNumero = Math.max(1, parsed.itens.length);
+    const secaoAtual = String(parsed.membrosPresentes || "").trim();
+
+    const base = secaoAtual || criarTemplateMembrosPresentes(proximoNumero);
+    parsed.membrosPresentes = aplicarRegrasMembrosPresentes(
+        base,
+        proximoNumero,
+        dadosGovernanca,
+        parsed.itens
+    );
+    return parsed;
+}
 
 function carregarEnv(baseDir) {
     const envPath = path.join(baseDir, ".env");
@@ -214,23 +492,74 @@ function montarSecaoCabecalho(template, meta) {
     return texto;
 }
 
+function extrairTituloSecao(itemTexto) {
+    const texto = String(itemTexto || "").trim();
+    if (!texto) return "";
+
+    const primeiraLinha = texto.split(/\r?\n/).find((linha) => linha.trim()) || "";
+    const emNegrito = primeiraLinha.match(/^\*\*(.+?)\*\*$/);
+    const bruto = emNegrito ? emNegrito[1].trim() : primeiraLinha.trim();
+
+    return bruto.replace(/^\d+\.\s*/, "").trim();
+}
+
+function anexarIndiceERelatoAoCabecalho(cabecalho, itens) {
+    const titulos = (itens || [])
+        .slice(1)
+        .map((item) => extrairTituloSecao(item))
+        .filter(Boolean);
+
+    if (!titulos.length) {
+        return `${String(cabecalho || "").trim()}\n\n**RELATO**`;
+    }
+
+    const linhasIndice = titulos.map((titulo, idx) => `${idx + 1}. ${titulo}`);
+    return `${String(cabecalho || "").trim()}\n\n${linhasIndice.join("\n")}\n\n**RELATO**`;
+}
+
 function parseItens(resposta) {
     const { meta, semCabecalho } = parseCabecalhoMeta(resposta);
-    const [parteItens, parteExtra] = semCabecalho.split(SEP_EXTRA);
+    const idxMembros = semCabecalho.indexOf(SEP_MEMBROS);
+    const idxExtra = semCabecalho.indexOf(SEP_EXTRA);
+
+    let fimItens = semCabecalho.length;
+    if (idxMembros !== -1) fimItens = Math.min(fimItens, idxMembros);
+    if (idxExtra !== -1) fimItens = Math.min(fimItens, idxExtra);
+
+    const parteItens = semCabecalho.slice(0, fimItens);
+
+    let membrosPresentes = null;
+    if (idxMembros !== -1) {
+        const inicioMembros = idxMembros + SEP_MEMBROS.length;
+        let fimMembros = semCabecalho.length;
+        if (idxExtra !== -1 && idxExtra > idxMembros) {
+            fimMembros = idxExtra;
+        }
+        membrosPresentes = semCabecalho.slice(inicioMembros, fimMembros).trim() || null;
+    }
+
+    let extra = null;
+    if (idxExtra !== -1) {
+        const inicioExtra = idxExtra + SEP_EXTRA.length;
+        let fimExtra = semCabecalho.length;
+        if (idxMembros !== -1 && idxMembros > idxExtra) {
+            fimExtra = idxMembros;
+        }
+        extra = semCabecalho.slice(inicioExtra, fimExtra).trim() || null;
+    }
 
     const itens = parteItens
         .split(SEP_ITEM)
         .map((s) => s.trim())
         .filter(Boolean);
 
-    const extra = parteExtra ? parteExtra.trim() : null;
-
-    return { itens, extra, metaCabecalho: meta };
+    return { itens, extra, membrosPresentes, metaCabecalho: meta };
 }
 
 function itensParaTexto(parsed) {
-    const { itens, extra } = parsed;
+    const { itens, extra, membrosPresentes } = parsed;
     let texto = itens.map((item) => `${SEP_ITEM}\n${item}`).join("\n\n");
+    if (membrosPresentes) texto += `\n\n${SEP_MEMBROS}\n${membrosPresentes}`;
     if (extra) texto += `\n\n${SEP_EXTRA}\n${extra}`;
     return texto;
 }
@@ -267,8 +596,24 @@ const INSTRUCOES_FORMATO = `
     Camila apresentou...
 - NÃO use os rótulos "Nome:", "Status:", "Resumo:" ou "Justificativa:".
 - NÃO inclua status em nenhuma seção.
+- Após os itens da pauta, inclua exatamente um bloco iniciado pela linha: <<<MEMBROS_PRESENTES>>>
+- Dentro de <<<MEMBROS_PRESENTES>>>, inclua exatamente uma seção com este título em negrito: **<número>. Membros Presentes**
+- A seção de membros presentes deve ser sempre a última seção numerada (numeração dinâmica conforme a quantidade de itens de pauta).
+- Após o título, inclua obrigatoriamente estes subtítulos em negrito, nesta ordem:
+    **Com direito a voto**
+    **Sem direito a voto**
+    **Convidados**
+- Deve existir uma linha em branco entre cada subtítulo e o primeiro partícipe listado.
+- Em cada subtítulo, liste por organização e depois as pessoas em bullets com "- ".
+- Se não houver nomes identificáveis para um subtítulo, escreva "Nenhum registrado.".
+- Em **Sem direito a voto**, inclua apenas representantes formais do Comitê Executivo. Se a pessoa não for representante formal daquele partícipe, mova para **Convidados**.
+- Quando o coordenador/apresentador explicitar que alguém não deve ter presença registrada, essa pessoa NÃO pode aparecer em <<<MEMBROS_PRESENTES>>>.
+- Nas seções de pauta (<<<ITEM>>>), toda referência nominal deve usar prefixo "sr." ou "sra.".
+- Na primeira menção de cada pessoa nas seções de pauta, inclua também a representação: "sr./sra. <Nome>, representante do/da <Organização>".
+- A regra de "sr./sra." e representação NÃO se aplica à seção <<<MEMBROS_PRESENTES>>>.
 - Se houver discussões genuinamente extra-pauta, inclua-as em uma única seção final iniciada exatamente com a linha: <<<EXTRA_PAUTA>>>
 - A seção <<<EXTRA_PAUTA>>> é opcional: omita-a se não houver discussões completamente fora da pauta.
+- Se <<<EXTRA_PAUTA>>> existir, ela deve vir depois de <<<MEMBROS_PRESENTES>>>.
 
 ## Exemplo do formato esperado (siga exatamente este padrão)
 \`\`\`
@@ -286,14 +631,38 @@ A ata foi aprovada por unanimidade. <Pessoa 1> sugeriu uma correção no item 3,
 **2. Planejamento do próximo trimestre**
 O item foi retirado da pauta porque o responsável não estava presente. Será retomado na próxima reunião.
 
+<<<MEMBROS_PRESENTES>>>
+**3. Membros Presentes**
+
+**Com direito a voto**
+
+Partícipe 1
+- Representante 1
+
+**Sem direito a voto**
+
+Partícipe 2
+- Representante 2
+
+**Convidados**
+
+Organização não partícipe 1
+- Convidado 1
+
 <<<EXTRA_PAUTA>>>
 **Extra-pauta: Confraternização de fim de ano**
 <Pessoa 2> trouxe a ideia de organizar um evento. Ficou de enviar uma proposta por e-mail.
 \`\`\`
 `;
 
-function promptInicial() {
+function promptInicial(contextoGovernanca) {
     return `Você é um assistente especializado em geração de atas de reunião. Sua tarefa é analisar o vídeo da reunião e produzir um relatório estruturado em português.
+
+Use também o contexto oficial de governança e representantes abaixo para apoiar a identificação dos partícipes, categorias de votação e representantes na seção de membros presentes.
+
+## Contexto oficial de governança e representantes
+
+${contextoGovernanca || "Contexto externo indisponível nesta execução."}
 
 Também tente identificar, se possível, os seguintes dados da reunião: número da ata, dia, mês por extenso e ano.
 Se não for possível identificar com confiança, mantenha os placeholders informados nas regras de formato.
@@ -316,6 +685,10 @@ Para cada item previsto na pauta:
 - Abaixo, escreva o conteúdo da seção (o que foi discutido e decidido), incluindo discussões relacionadas que ocorreram no contexto desse item.
 - Se o item tiver sido retirado da pauta ou não abordado, explique isso no próprio conteúdo da seção e informe justificativa quando houver.
 - Quando não for possível identificar o nome do participante, use placeholders consistentes ao longo de todo o documento (ex: <Pessoa 1>, <Pessoa 2> — sempre o mesmo identificador para a mesma pessoa).
+- Em seções de pauta, use sempre "sr." ou "sra." antes do nome de pessoa.
+- Na primeira menção de cada pessoa nas seções de pauta, escreva também a representação: "sr./sra. <Nome>, representante do/da <Organização>".
+- Nas menções seguintes da mesma pessoa nas seções de pauta, mantenha ao menos "sr./sra. <Nome>".
+- Essas regras de tratamento NÃO valem para <<<MEMBROS_PRESENTES>>>.
 
 NÃO inclua linha de status nem os rótulos "Nome:", "Status:", "Resumo:" ou "Justificativa:".
 
@@ -343,8 +716,14 @@ ${perguntaUsuario}
 Responda apenas à pergunta acima. NÃO regenere as seções da ata nem produza uma nova ata. Seja direto e objetivo. Se a pergunta exigir referência a alguma seção, cite-a brevemente.`;
 }
 
-function promptAjusteSemVideo(ajuste, itensTexto) {
+function promptAjusteSemVideo(ajuste, itensTexto, contextoGovernanca) {
     return `Você é um assistente especializado em atas de reunião. Abaixo estão as seções da ata que você gerou anteriormente, seguidos de uma solicitação de ajuste do usuário.
+
+Use também o contexto oficial de governança e representantes abaixo para apoiar a manutenção da seção de membros presentes.
+
+## Contexto oficial de governança e representantes
+
+${contextoGovernanca || "Contexto externo indisponível nesta execução."}
 
 ## Seções atuais da ata
 
@@ -359,12 +738,22 @@ ${ajuste}
 Aplique o ajuste solicitado e retorne as seções atualizadas. Mantenha todos os padrões:
 - Placeholders consistentes para nomes não identificados (<Pessoa 1>, <Pessoa 2>, etc.)
 - O mesmo estilo e nível de detalhe das seções originais
+- Preserve obrigatoriamente a seção <<<MEMBROS_PRESENTES>>> e mantenha seus subtítulos em negrito.
+- Preserve obrigatoriamente linha em branco entre subtítulo e primeiro partícipe em <<<MEMBROS_PRESENTES>>>.
+- Em <<<MEMBROS_PRESENTES>>>, se houver orientação explícita do coordenador/apresentador para desconsiderar presença de alguém, não inclua essa pessoa.
+- Em <<<ITEM>>>, aplique "sr./sra." em toda menção de pessoa e inclua representação na primeira menção.
 
 ${INSTRUCOES_FORMATO}`;
 }
 
-function promptAjusteComVideo(ajuste, itensTexto) {
+function promptAjusteComVideo(ajuste, itensTexto, contextoGovernanca) {
     return `Você é um assistente especializado em atas de reunião. Você analisou o vídeo de uma reunião e gerou as seções da ata abaixo. O usuário está solicitando um ajuste, e você deve usar tanto o vídeo quanto as seções geradas como contexto para produzir uma versão atualizada.
+
+Use também o contexto oficial de governança e representantes abaixo para apoiar a manutenção da seção de membros presentes.
+
+## Contexto oficial de governança e representantes
+
+${contextoGovernanca || "Contexto externo indisponível nesta execução."}
 
 ## Seções atuais da ata (geradas anteriormente)
 
@@ -377,6 +766,10 @@ ${ajuste}
 ## Instrução
 
 Revise as seções tendo o vídeo da reunião como referência primária. O ajuste pode incluir: inclusão de nova seção, alteração de conteúdo, correção de nome, mudança de ordem, etc. Produza a lista completa e atualizada de seções.
+Preserve obrigatoriamente a seção <<<MEMBROS_PRESENTES>>> e mantenha seus subtítulos em negrito.
+- Preserve obrigatoriamente linha em branco entre subtítulo e primeiro partícipe em <<<MEMBROS_PRESENTES>>>.
+- Em <<<MEMBROS_PRESENTES>>>, se houver orientação explícita do coordenador/apresentador para desconsiderar presença de alguém, não inclua essa pessoa.
+- Em <<<ITEM>>>, aplique "sr./sra." em toda menção de pessoa e inclua representação na primeira menção.
 
 ${INSTRUCOES_FORMATO}`;
 }
@@ -413,6 +806,15 @@ function salvarArquivos(baseDir, parsed) {
         criados.push(nome);
     });
 
+    if (parsed.membrosPresentes) {
+        fs.writeFileSync(
+            path.join(resultDir, "membros-presentes.md"),
+            parsed.membrosPresentes,
+            "utf8"
+        );
+        criados.push("membros-presentes.md");
+    }
+
     if (parsed.extra) {
         fs.writeFileSync(path.join(resultDir, "extra-pauta.md"), parsed.extra, "utf8");
         criados.push("extra-pauta.md");
@@ -446,6 +848,9 @@ function createAtaService(baseDir) {
     const fastModelName = config.fastModel || "gemini-2.0-flash";
     const model = genAI.getGenerativeModel({ model: modelName });
     const fastModel = genAI.getGenerativeModel({ model: fastModelName });
+    let ultimoContextoGovernanca = "";
+    let ultimoAvisoContexto = [];
+    let ultimoDadosGovernanca = null;
 
     async function chamarGemini(modelo, partes) {
         const result = await modelo.generateContent(partes);
@@ -458,12 +863,17 @@ function createAtaService(baseDir) {
         },
 
         async gerarSecoes(videoUrl) {
+            const contextoGovernanca = await carregarContextoGovernanca(baseDir, config);
+            ultimoContextoGovernanca = contextoGovernanca.textoPrompt;
+            ultimoAvisoContexto = contextoGovernanca.avisos;
+            ultimoDadosGovernanca = contextoGovernanca.dadosEstruturados || null;
+
             const resposta = await chamarGemini(model, [
                 partesVideo(videoUrl),
-                promptInicial(),
+                promptInicial(ultimoContextoGovernanca),
             ]);
 
-            const parsed = parseItens(resposta);
+            let parsed = parseItens(resposta);
             if (!parsed.itens.length) {
                 throw new Error("A resposta do Gemini não retornou seções no formato esperado.");
             }
@@ -473,6 +883,9 @@ function createAtaService(baseDir) {
                 parsed.metaCabecalho
             );
             parsed.itens.unshift(secaoCabecalho);
+            parsed.itens[0] = anexarIndiceERelatoAoCabecalho(parsed.itens[0], parsed.itens);
+            parsed = garantirSecaoMembrosPresentes(parsed, ultimoDadosGovernanca);
+            parsed.contextoAvisos = ultimoAvisoContexto;
 
             return parsed;
         },
@@ -488,15 +901,49 @@ function createAtaService(baseDir) {
             if (incluirVideo) {
                 const resposta = await chamarGemini(model, [
                     partesVideo(videoUrl),
-                    promptAjusteComVideo(ajuste, itensParaTexto(parsed)),
+                    promptAjusteComVideo(
+                        ajuste,
+                        itensParaTexto(parsed),
+                        ultimoContextoGovernanca
+                    ),
                 ]);
-                return parseItens(resposta);
+                const ajustado = parseItens(resposta);
+                const secaoCabecalho = montarSecaoCabecalho(
+                    headerTemplate,
+                    ajustado.metaCabecalho
+                );
+                ajustado.itens.unshift(secaoCabecalho);
+                ajustado.itens[0] = anexarIndiceERelatoAoCabecalho(
+                    ajustado.itens[0],
+                    ajustado.itens
+                );
+                ajustado.membrosPresentes =
+                    ajustado.membrosPresentes || parsed.membrosPresentes || null;
+                ajustado.contextoAvisos = ultimoAvisoContexto;
+                return garantirSecaoMembrosPresentes(ajustado, ultimoDadosGovernanca);
             }
 
             const resposta = await chamarGemini(fastModel, [
-                promptAjusteSemVideo(ajuste, itensParaTexto(parsed)),
+                promptAjusteSemVideo(
+                    ajuste,
+                    itensParaTexto(parsed),
+                    ultimoContextoGovernanca
+                ),
             ]);
-            return parseItens(resposta);
+            const ajustado = parseItens(resposta);
+            const secaoCabecalho = montarSecaoCabecalho(
+                headerTemplate,
+                ajustado.metaCabecalho
+            );
+            ajustado.itens.unshift(secaoCabecalho);
+            ajustado.itens[0] = anexarIndiceERelatoAoCabecalho(
+                ajustado.itens[0],
+                ajustado.itens
+            );
+            ajustado.membrosPresentes =
+                ajustado.membrosPresentes || parsed.membrosPresentes || null;
+            ajustado.contextoAvisos = ultimoAvisoContexto;
+            return garantirSecaoMembrosPresentes(ajustado, ultimoDadosGovernanca);
         },
 
         aceitar(parsed) {
@@ -510,6 +957,7 @@ function createAtaService(baseDir) {
             }
 
             const partes = [...parsed.itens];
+            if (parsed.membrosPresentes) partes.push(parsed.membrosPresentes);
             if (parsed.extra) partes.push(parsed.extra);
             const combinado = partes.join("\n\n");
 
